@@ -322,39 +322,44 @@ function transformMarketauxItem(item, source) {
    ============================================================ */
 
 async function fetchWithFallback(url) {
-  // Try our own Vercel serverless function first (reliable in production)
-  try {
-    const response = await fetch(CORS_PROXY(url));
-    if (response.ok) {
+  const proxies = [
+    { name: 'Own Vercel proxy', fn: CORS_PROXY },
+    { name: 'allorigins.win', fn: CORS_PROXY_FALLBACK_1 },
+    { name: 'corsproxy.io', fn: CORS_PROXY_FALLBACK_2 },
+  ];
+
+  for (const proxy of proxies) {
+    try {
+      const proxyUrl = proxy.fn(url);
+      console.log(`[Proxy] Trying ${proxy.name} for ${url}`);
+      
+      const response = await fetch(proxyUrl);
+      
+      if (!response.ok) {
+        console.warn(`[Proxy] ${proxy.name} returned HTTP ${response.status}`);
+        continue;
+      }
+      
       const text = await response.text();
-      if (text && text.length > 100 && !text.startsWith('{"error"')) {
+      
+      // Detect error JSON responses (like corsproxy.io's "free usage" error)
+      if (text.startsWith('{"error"')) {
+        console.warn(`[Proxy] ${proxy.name} returned error JSON: ${text.slice(0, 100)}`);
+        continue;
+      }
+      
+      // Sanity check — got real content
+      if (text && text.length > 100) {
+        console.log(`[Proxy] ✓ ${proxy.name} succeeded (${text.length} bytes)`);
         return text;
       }
+      
+      console.warn(`[Proxy] ${proxy.name} returned empty/short response`);
+    } catch (err) {
+      console.warn(`[Proxy] ${proxy.name} threw error:`, err.message);
     }
-  } catch {}
-
-  // Fallback 1: allorigins.win (works in local dev)
-  try {
-    const response = await fetch(CORS_PROXY_FALLBACK_1(url));
-    if (response.ok) {
-      const text = await response.text();
-      if (text && text.length > 100 && !text.startsWith('{"error"')) {
-        return text;
-      }
-    }
-  } catch {}
-
-  // Fallback 2: corsproxy.io (works in local dev only)
-  try {
-    const response = await fetch(CORS_PROXY_FALLBACK_2(url));
-    if (response.ok) {
-      const text = await response.text();
-      if (text && text.length > 100 && !text.startsWith('{"error"')) {
-        return text;
-      }
-    }
-  } catch {}
-
+  }
+  
   throw new Error('All proxies failed');
 }
 
