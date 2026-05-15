@@ -12,18 +12,15 @@
 
 /**
  * CORS Proxy Strategy:
- * - In production (Vercel): use our own /api/feed-proxy serverless function
- *   This is reliable, free (within Vercel's free tier), and doesn't depend
- *   on external services that block production traffic.
- * - In local dev: same /api/feed-proxy works if you run `vercel dev`.
- *   Falls back to public proxies for plain `npm run dev`.
+ * 
+ * We use ONLY our own /api/feed-proxy endpoint, which works in:
+ *   - Local dev (via Vite plugin in vite.config.js)
+ *   - Production (via Vercel serverless function in api/feed-proxy.js)
+ * 
+ * No external public proxies needed — they were unreliable and got
+ * blocked in production. Same code path everywhere now.
  */
 const CORS_PROXY = url => `/api/feed-proxy?url=${encodeURIComponent(url)}`;
-
-// Public proxy fallbacks — used only if our own proxy is unavailable
-// (e.g., during `npm run dev` without `vercel dev`)
-const CORS_PROXY_FALLBACK_1 = url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-const CORS_PROXY_FALLBACK_2 = url => `https://corsproxy.io/?${encodeURIComponent(url)}`;
 
 export const SOURCES = [
   /* ===== LNG PRIME — Confirmed WordPress category feeds ===== */
@@ -322,45 +319,36 @@ function transformMarketauxItem(item, source) {
    ============================================================ */
 
 async function fetchWithFallback(url) {
-  const proxies = [
-    { name: 'Own Vercel proxy', fn: CORS_PROXY },
-    { name: 'allorigins.win', fn: CORS_PROXY_FALLBACK_1 },
-    { name: 'corsproxy.io', fn: CORS_PROXY_FALLBACK_2 },
-  ];
+  const proxyUrl = CORS_PROXY(url);
+  console.log(`[Proxy] Fetching ${url}`);
 
-  for (const proxy of proxies) {
-    try {
-      const proxyUrl = proxy.fn(url);
-      console.log(`[Proxy] Trying ${proxy.name} for ${url}`);
-      
-      const response = await fetch(proxyUrl);
-      
-      if (!response.ok) {
-        console.warn(`[Proxy] ${proxy.name} returned HTTP ${response.status}`);
-        continue;
-      }
-      
-      const text = await response.text();
-      
-      // Detect error JSON responses (like corsproxy.io's "free usage" error)
-      if (text.startsWith('{"error"')) {
-        console.warn(`[Proxy] ${proxy.name} returned error JSON: ${text.slice(0, 100)}`);
-        continue;
-      }
-      
-      // Sanity check — got real content
-      if (text && text.length > 100) {
-        console.log(`[Proxy] ✓ ${proxy.name} succeeded (${text.length} bytes)`);
-        return text;
-      }
-      
-      console.warn(`[Proxy] ${proxy.name} returned empty/short response`);
-    } catch (err) {
-      console.warn(`[Proxy] ${proxy.name} threw error:`, err.message);
+  try {
+    const response = await fetch(proxyUrl);
+
+    if (!response.ok) {
+      console.error(`[Proxy] HTTP ${response.status} for ${url}`);
+      throw new Error(`Proxy returned HTTP ${response.status}`);
     }
+
+    const text = await response.text();
+
+    // Detect error JSON responses
+    if (text.startsWith('{"error"')) {
+      console.error(`[Proxy] Error response: ${text.slice(0, 150)}`);
+      throw new Error('Proxy returned error JSON');
+    }
+
+    if (!text || text.length < 100) {
+      console.warn(`[Proxy] Suspiciously short response (${text.length} bytes)`);
+      throw new Error('Empty or invalid response');
+    }
+
+    console.log(`[Proxy] ✓ ${url} (${text.length} bytes)`);
+    return text;
+  } catch (err) {
+    console.error(`[Proxy] Failed for ${url}:`, err.message);
+    throw err;
   }
-  
-  throw new Error('All proxies failed');
 }
 
 async function fetchRSSFeed(source) {
