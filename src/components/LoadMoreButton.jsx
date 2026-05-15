@@ -11,16 +11,16 @@ export default function LoadMoreButton({
       
       <div className="load-more-info">
         <div className="load-more-meta">
-          {/* <span className="load-more-label">More coverage available</span> */}
+          <span className="load-more-label">More coverage available</span>
           <span className="load-more-count">
             {remaining} {remaining === 1 ? 'category' : 'categories'} pending
           </span>
         </div>
-        {/* {nextSource && !loading && (
+        {nextSource && !loading && (
           <div className="load-more-next">
             Next: <strong>{nextSource.publisher}</strong> — {nextSource.name}
           </div>
-        )} */}
+        )}
         {loading && (
           <div className="load-more-next">
             <span className="load-more-spinner"></span>
@@ -30,13 +30,13 @@ export default function LoadMoreButton({
       </div>
 
       <div className="load-more-actions">
-        {/* <button
+        <button
           className="load-more-btn primary"
           onClick={onLoadMore}
           disabled={loading}
         >
           {loading ? 'Loading...' : '↓ Load Next Category'}
-        </button> */}
+        </button>
         
         {remaining > 1 && (
           <button

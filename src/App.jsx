@@ -142,7 +142,7 @@ export default function App() {
 
   return (
     <div className="app">
-      {/* <Masthead fetchedAt={fetchedAt} /> */}
+      <Masthead fetchedAt={fetchedAt} />
       <TickerBar
         sourceStatus={sourceStatus}
         loading={initialLoading}
@@ -191,7 +191,7 @@ export default function App() {
         )}
       </main>
 
-      {/* <footer className="footer">
+      <footer className="footer">
         <div className="footer-content">
           <div>
             <div className="footer-title">The Commodity Wire</div>
@@ -218,7 +218,7 @@ export default function App() {
             </ul>
           </div>
         </div>
-      </footer> */}
+      </footer>
     </div>
   );
 }

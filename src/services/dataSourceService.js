@@ -10,8 +10,20 @@
  * Only real, verified feed URLs included — no guessed/invented URLs.
  */
 
-const CORS_PROXY = url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-const CORS_PROXY_FALLBACK = url => `https://corsproxy.io/?${encodeURIComponent(url)}`;
+/**
+ * CORS Proxy Strategy:
+ * - In production (Vercel): use our own /api/feed-proxy serverless function
+ *   This is reliable, free (within Vercel's free tier), and doesn't depend
+ *   on external services that block production traffic.
+ * - In local dev: same /api/feed-proxy works if you run `vercel dev`.
+ *   Falls back to public proxies for plain `npm run dev`.
+ */
+const CORS_PROXY = url => `/api/feed-proxy?url=${encodeURIComponent(url)}`;
+
+// Public proxy fallbacks — used only if our own proxy is unavailable
+// (e.g., during `npm run dev` without `vercel dev`)
+const CORS_PROXY_FALLBACK_1 = url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+const CORS_PROXY_FALLBACK_2 = url => `https://corsproxy.io/?${encodeURIComponent(url)}`;
 
 export const SOURCES = [
   /* ===== LNG PRIME — Confirmed WordPress category feeds ===== */
@@ -310,23 +322,40 @@ function transformMarketauxItem(item, source) {
    ============================================================ */
 
 async function fetchWithFallback(url) {
+  // Try our own Vercel serverless function first (reliable in production)
   try {
     const response = await fetch(CORS_PROXY(url));
     if (response.ok) {
       const text = await response.text();
-      if (text && text.length > 100) return text;
+      if (text && text.length > 100 && !text.startsWith('{"error"')) {
+        return text;
+      }
     }
   } catch {}
 
+  // Fallback 1: allorigins.win (works in local dev)
   try {
-    const response = await fetch(CORS_PROXY_FALLBACK(url));
+    const response = await fetch(CORS_PROXY_FALLBACK_1(url));
     if (response.ok) {
       const text = await response.text();
-      if (text && text.length > 100) return text;
+      if (text && text.length > 100 && !text.startsWith('{"error"')) {
+        return text;
+      }
     }
   } catch {}
 
-  throw new Error('All CORS proxies failed');
+  // Fallback 2: corsproxy.io (works in local dev only)
+  try {
+    const response = await fetch(CORS_PROXY_FALLBACK_2(url));
+    if (response.ok) {
+      const text = await response.text();
+      if (text && text.length > 100 && !text.startsWith('{"error"')) {
+        return text;
+      }
+    }
+  } catch {}
+
+  throw new Error('All proxies failed');
 }
 
 async function fetchRSSFeed(source) {
